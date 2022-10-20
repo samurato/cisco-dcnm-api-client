@@ -1,0 +1,3394 @@
+openapi: 3.0.0
+info:
+  title: DCNM Postman Collection
+  description: >-
+    # Cisco Datacenter Network Manager (DCNM) API Postman Collection
+
+
+    This repository contains the a Postman collection and environment variable
+    file to leverage the REST API on DCNM.  This collection was tested and built
+    using DCNM 11.5(1) within the DevNet Sandbox infrastructure.  As such, some
+    variables will need to be reset if used outside of this testbed.
+
+
+    ## Cisco DCNM Background
+
+
+    DCNM is a network management platform for all NX-OS-centric network
+    deployments.  DCNM has several different installation personas, including
+    LAN Fabric (BGP-EVPN with VXLAN), LAN Management (classic layer-2/layer-3
+    architecture), IP Fabric for Media (IPFM) and storage networking (SAN),
+    however this collection covers the LAN fabric deployment model supporting an
+    EVPN-VXLAN fabric backed by Nexus 9000-series switching.  APIs for other
+    personas, while potentially overlapping, are not covered as part of this
+    collection.
+
+
+    ## Additional Resources
+
+    - [DCNM Sandbox on
+    DevNet](https://devnetsandbox.cisco.com/RM/Diagram/Index/4b6f511a-4d7c-4764-927b-0fc591a661c6?diagramType=Topology)
+
+    - REST API documentation is available off-box
+    [here](https://developer.cisco.com/docs/data-center-network-manager/11-5-1/)
+
+    - REST API documentation also available directly on the DCNM at
+    `http://DCNM.IP.ADDRESS/api-docs`
+
+
+    ## Covered APIs
+
+
+    - DCNM administration
+
+    - L4-L7 service operations
+
+    - Fabric, Network, Interface, VRF, and Link top-down operations
+
+    - LAN credential management
+
+    - Policy and Template operations
+
+    - Physical switch roles and discovery
+
+
+    ## Notes about the included ENV variables
+
+
+    Prior to using any requests, please ensure you gather the token from your
+    DCNM instance using the included API call `dcnm login - gather token`.  This
+    call will log you into the DCNM (using credentials stored in the
+    environment) and automatically store the key for use with every other
+    request in the collection.
+
+
+    In order to keep the environment variables to a reasonable number, reuse was
+    included.  While I made attempts to include commonly reused variables
+    (fabric names, VRF names, etc), the variables may require a bit of context
+    parsing to ensure the correct usage within a particular environment.  In
+    some instances, variables are defined within the payload, but not inside of
+    the environment file to discern that the specific variable should be
+    replaced.  As a final note, for any API or payload referencing a device
+    serial number -- please ensure correct serial numbers are inserted as
+    appropriate.
+
+
+    _In some instances, Javascript tests have been included as part of the API
+    request to populate another variable that would be used somewhere else in
+    that folder of requests (VRF IDs, VLAN IDs, etc).  These can be overridden
+    in the environment settings, but have been included for automated tasks
+    (like using Runner)_
+  version: 1.0.0
+servers:
+  - url: https://{{dcnm}}
+components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+tags:
+  - name: DCNM Administration
+    description: >-
+      Common tasks associated with the general usage of DCNM.  `get version`
+      should be considered a base "hello world" operation that connectivity
+      could be tested with prior to grabbing a token using credentials.
+  - name: Service Operations
+    description: >-
+      Operations centered around service insertion (L4-L7) within a fabric. 
+      This set of requests covers individual nodes, peerings between external
+      devices and the fabric, and the policies within the service insertion.
+  - name: Fabric Operations
+    description: >-
+      Set of requests used for directly interacting with the fabric constructs
+      within DCNM.
+  - name: Network Operations
+    description: Operations focused on the "network" overlays within the EVPN-VXLAN fabric
+  - name: Interface Operations
+    description: >-
+      Operations used for creating interfaces within DCNM.  Many of the payloads
+      will look the same (with the exception of the interface type), so unique
+      descriptions will not be provided for each.
+
+
+      This API should be used to create Port-channel, vPC, ST FEX, AA FEX,
+      Loopback and Subinterface. Any interface can be added only once.
+
+
+      Invoking this API more than once with same payload will return error
+      Resource could not be allocated. Once invoked, any further changes to
+      interface should be done using PUT API. Once the interface is added, use
+      /rest/interface/deploy API to push the config to device.
+
+
+      Following are the interfaceTypes corresponding to each interfaces:
+
+          Port Channel -- INTERFACE_PORT_CHANNEL
+
+          virtual Port Channel (vPC) --- INTERFACE_VPC
+
+          Loopback --- INTERFACE_LOOPBACK
+
+          Straight-through (ST) FEX --- STRAIGHT_TROUGH_FEX
+
+          Active-Active (AA) FEX --- AA_FEX
+
+          Subinterface --- SUBINTERFACE.
+
+          Ethernet --- INTERFACE_ETHERNET.
+
+          Switch Virtual Interface (SVI) --- INTERFACE_VLAN.
+
+      For adding vPC and AA FEX, serial number should be a combined serial
+      number ex.FDO21331S8T~FDO21332E6X. User can get the combined serial number
+      by using `/rest/interface/vpcpair_serial_number` REST API
+  - name: Link Operations
+  - name: VRF Operations
+    description: >-
+      Set of requests that focuses on top-down VRF operations, either between
+      fabrics, or as a multisite extension.
+  - name: LAN Credential Management
+    description: >-
+      Requests for interacting with the Default LAN Credentials tab within
+      DCNM.  These credentials are used when device-specific credentials are
+      undefined during device reachability/discovery
+  - name: Template Operations
+    description: >-
+      Grouping of requests focused on configuration template creation,
+      management, application, and verification
+  - name: Policy Operations
+    description: >-
+      Set of requests that focus on the applied control policies applied to
+      switches within the DCNM inventory
+  - name: Image/Package Management
+    description: >-
+      Set of requests used to interact with the software and package management
+      APIs within DCNM
+  - name: Switch Operations
+    description: >-
+      Set of API requests used to directly interact within switches managed by
+      DCNM.  Devices need to be added to inventory (and to a fabric in some
+      calls) for proper function.
+paths:
+  /fm/fmrest/dbadmin/addUser:
+    post:
+      tags:
+        - DCNM Administration
+      summary: add user
+      description: >-
+        Adds user to DCNM store.  Pay attention to `role` and `expiration`
+        values if used outside of lab/test environments.
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: >-
+                "userName=developer&password=Cisco12345!&roleName=network-admin&enablePwdExpiration=false"
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/x-www-form-urlencoded
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/dcnm-version:
+    get:
+      tags:
+        - DCNM Administration
+      summary: get version
+      description: >-
+        Used to grab version value of DCNM application.  Does not require token
+        for information.
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/fabrics/{service_fabric}/service-nodes:
+    get:
+      tags:
+        - Service Operations
+      summary: 'get service node '
+      description: >-
+        Used to retrieve the service nodes present under the fabric defined
+        within the URI.  The fabric will be an external fabric to the EVPN-VXLAN
+        EasyFabric
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: service_fabric
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/fabrics/{service_fabric}/service-node:
+    post:
+      tags:
+        - Service Operations
+      summary: create service node
+      description: >-
+        Creates a service node within the external service fabric.  The payload
+        will include the fabric that the node is attached to (EasyFabric) as
+        well as the device and port-level information
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                attachedFabricName: '{{fabric}}'
+                attachedSwitchInterfaceName: Ethernet1/52
+                attachedSwitchSn: attachedSwitchSerialNumber
+                fabricName: '{{service_fabric}}'
+                formFactor: Virtual
+                interfaceName: G1/1
+                lastUpdated: 0
+                linkTemplateName: service_link_trunk
+                linkUuid: string
+                name: sn1
+                nvPairs:
+                  SPEED: Auto
+                  MTU: jumbo
+                  ALLOWED_VLANS: none
+                  BPDUGUARD_ENABLED: 'no'
+                  PORTTYPE_FAST_ENABLED: 'true'
+                  ADMIN_STATE: 'true'
+                peerName: string
+                type: Firewall
+                vpcSwitchesAttached: false
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: service_fabric
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/{service_fabric}/service-nodes/{service_node}:
+    delete:
+      tags:
+        - Service Operations
+      summary: delete service node
+      description: >-
+        Removes the service node defined in the URI from the external service
+        fabric (also defined in the URI)
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: service_fabric
+          in: path
+          schema:
+            type: string
+          required: true
+        - name: service_node
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/fabrics{service_fabric}/service-node/{service_node}/peerings:
+    get:
+      tags:
+        - Service Operations
+      summary: get route peering of node
+      description: >-
+        Used to retrieve service route peering(s) for the selected service node
+        under the selected fabric
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: service_fabric
+          in: path
+          schema:
+            type: string
+          required: true
+        - name: service_node
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/fabrics/{service_fabric}/service-nodes/{service_node}/peerings:
+    post:
+      tags:
+        - Service Operations
+      summary: create route peering
+      description: >-
+        Used to create service route peering under the selected fabric, i.e. the
+        logic attachment to the easy fabric
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: >-
+                "{\n  \"attachedFabricName\": \"{{fabric}}\",\n 
+                \"deploymentMode\": \"IntraTenantFW\",\n  \"enabled\": false,\n 
+                \"fabricName\": \"{{service_fabric}}\",\n  \"lastUpdated\":
+                0,\n  \"nextHopIp\": \"1.2.3.4\",\n  \"peeringName\":
+                \"peering1\",\n  \"peeringOption\": \"None\",\n 
+                \"reverseNextHopIp\": \"2.3.4.5\",\n  \"routes\": [\n   
+                {\n      \"nvPairs\": {\n        \"MULTI_ROUTES\": \"5.5.5.5,
+                1.2.3.4\"\n      },\n      \"templateName\":
+                \"service_static_route\",\n      \"vrfName\": \"vrf1\"\n    }\n 
+                ],\n  \"serviceNetworks\": [\n    {\n      \"networkName\":
+                \"serviceNetwork1\",\n      \"networkType\":
+                \"InsideNetworkFW\",\n      \"nvPairs\": {\n       
+                \"gatewayIpAddress\": \"1.2.3.1/24\",\n        \"vlanId\":
+                \"1000\"\n      },\n      \"templateName\":
+                \"Service_Network_Universal\",\n      \"vlanId\": 1000,\n     
+                \"vrfName\": \"vrf1\"\n    }\n  ],\n  \"serviceNodeName\":
+                \"sn1\",\n  \"serviceNodeType\": \"Firewall\",\n  \"status\":
+                \"In-Sync\",\n  \"statusDetails\": [\n    {\n     
+                \"fabricName\": \"attachedEasyFabric\",\n      \"resourceName\":
+                \"serviceNetwork1\",\n      \"resourceType\":
+                \"Network\",\n      \"switchStatuses\": [\n        {\n         
+                \"status\": \"In-Sync\",\n          \"switchSerialNumber\":
+                \"switchSerialNumber\",\n          \"updatedBy\":
+                \"config-compliance\",\n          \"updatedTime\": 0\n       
+                }\n      ]\n    }\n  ]\n}"
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: service_fabric
+          in: path
+          schema:
+            type: string
+          required: true
+        - name: service_node
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/fabrics/{service_fabric}/service-nodes/{service_node}/peerings/{fabric}/attachments:
+    post:
+      tags:
+        - Service Operations
+      summary: attach route peering
+      description: >-
+        Used to attach the service networks and their VRF of the selected route
+        peerings to service leaf
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: >-
+                "{\n    \"peeringNames\": [\n        \"RP-1\",\n       
+                \"RP-2\"\n    ]\n}"
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: service_fabric
+          in: path
+          schema:
+            type: string
+          required: true
+        - name: service_node
+          in: path
+          schema:
+            type: string
+          required: true
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    delete:
+      tags:
+        - Service Operations
+      summary: detach route peering
+      description: >-
+        Used to detach the service networks and their VRF of the selected route
+        peering to service leaf
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: peering-names
+          in: query
+          schema:
+            type: string
+          example: RP-1
+        - name: service_fabric
+          in: path
+          schema:
+            type: string
+          required: true
+        - name: service_node
+          in: path
+          schema:
+            type: string
+          required: true
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/fabrics/{service_fabric}/service-nodes/{service_node}/peerings/{fabric}/depoloyments:
+    post:
+      tags:
+        - Service Operations
+      summary: deploy route peering
+      description: >-
+        Used to deploy the service network and its VRF of the selected route
+        peerings to service leaf
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: >-
+                "{\n    \"peeringNames\": [\n        \"RP-1\",\n       
+                \"RP-2\"\n    ]\n}"
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: service_fabric
+          in: path
+          schema:
+            type: string
+          required: true
+        - name: service_node
+          in: path
+          schema:
+            type: string
+          required: true
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/fabrics/{service_fabric}/service-nodes/{service_node}/peerings/{fabric}:
+    delete:
+      tags:
+        - Service Operations
+      summary: delete route peering
+      description: >-
+        Used to delete a service route peering for the selected service node of
+        the type under the selected fabric
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: service_fabric
+          in: path
+          schema:
+            type: string
+          required: true
+        - name: service_node
+          in: path
+          schema:
+            type: string
+          required: true
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/{service_fabric}/service-nodes/{service_node}/policies:
+    get:
+      tags:
+        - Service Operations
+      summary: get service policy
+      description: >-
+        Used to retrieve service policies for the selected service node under
+        the selected fabric
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: service_fabric
+          in: path
+          schema:
+            type: string
+          required: true
+        - name: service_node
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/fabrics/{service_fabric}/service-nodes/{service_node}/policies:
+    post:
+      tags:
+        - Service Operations
+      summary: create service policy
+      description: >-
+        Used to create a service policy for the selected service node under the
+        selected fabric
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: >-
+                "{\n  \"attachDetails\": [\n    {\n      \"fabricName\":
+                \"{{fabric}}\",\n      \"resourceName\":
+                \"serviceNetwork1\",\n      \"resourceType\":
+                \"Network\",\n      \"switchAttaches\": [\n        {\n         
+                \"attachState\": \"DEPLOYED\",\n          \"lanAttached\":
+                true,\n          \"portNames\": \"Ethernet1/52\",\n         
+                \"switchIp\": \"123.23.23.23\",\n          \"switchName\":
+                \"switchABC\",\n          \"switchRole\": \"leaf\",\n         
+                \"switchSerialNumber\": \"switchSerialNumber\",\n         
+                \"vlanId\": 1000\n        }\n      ]\n    }\n  ],\n 
+                \"attachedFabricName\": \"{{fabric}}\",\n 
+                \"destinationInterfaces\": {\n    \"swSerialNumber2\":
+                \"Ethernet1/53.3\"\n  },\n  \"destinationNetwork\":
+                \"12.1.1.2/32\",\n  \"destinationNetworkName\": \"destNet1\",\n 
+                \"destinationVrfName\": \"vrf1\",\n  \"enabled\": true,\n 
+                \"fabricName\": \"{{service_fabric}}\",\n  \"lastUpdated\":
+                0,\n  \"nextHopIp\": \"1.2.3.4\",\n  \"nvPairs\": {\n   
+                \"PROTOCOL\": \"tcp\",\n    \"SRC_PORT\": \"any\",\n   
+                \"DEST_PORT\": \"443\",\n    \"ROUTE_MAP_ACTION\":
+                \"permit\",\n    \"NEXT_HOP_OPTION\": \"none\"\n  },\n 
+                \"peeringName\": \"peering1\",\n  \"policyName\":
+                \"policy1\",\n  \"policyTemplateName\": \"service_pbr\",\n 
+                \"reverseEnabled\": true,\n  \"reverseNextHopIp\":
+                \"2.3.4.5\",\n  \"routeMapName\": \"string\",\n 
+                \"serviceNodeName\": \"sn1\",\n  \"serviceNodeType\":
+                \"Firewall\",\n  \"sourceInterfaces\": {\n   
+                \"swSerialNumber1\": \"Ethernet1/53.2,Ethernet1/54.2\"\n  },\n 
+                \"sourceNetwork\": \"11.1.1.1/24\",\n  \"sourceNetworkName\":
+                \"srcNet1\",\n  \"sourceVrfName\": \"vrf1\",\n  \"status\":
+                \"In-Sync\",\n  \"statusDetails\": [\n    {\n     
+                \"fabricName\": \"{{fabric}}\",\n      \"resourceName\":
+                \"serviceNetwork1\",\n      \"resourceType\":
+                \"Network\",\n      \"switchStatuses\": [\n        {\n         
+                \"status\": \"In-Sync\",\n          \"switchSerialNumber\":
+                \"switchSerialNumber\",\n          \"updatedBy\":
+                \"config-compliance\",\n          \"updatedTime\": 0\n       
+                }\n      ]\n    }\n  ]\n}"
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: service_fabric
+          in: path
+          schema:
+            type: string
+          required: true
+        - name: service_node
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    delete:
+      tags:
+        - Service Operations
+      summary: delete service policy
+      description: >-
+        Used to delete service policies for the selected service node under the
+        selected fabric and attached fabric
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: service_fabric
+          in: path
+          schema:
+            type: string
+          required: true
+        - name: service_node
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/fabrics/{service_fabric}/service-nodes/{service_node}/policies/{fabric}/attachments:
+    post:
+      tags:
+        - Service Operations
+      summary: attach service policy
+      description: >-
+        Used to enable the service policies on the source or/and destination
+        networks
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"{\n  \"policyNames\": [\n    \"SP-1\",\n    \"SP-2\"\n  ]\n}"'
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: service_fabric
+          in: path
+          schema:
+            type: string
+          required: true
+        - name: service_node
+          in: path
+          schema:
+            type: string
+          required: true
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    delete:
+      tags:
+        - Service Operations
+      summary: detach service policy
+      description: >-
+        Used to disable the service policies on the source or/and destination
+        networks
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: policy-names
+          in: query
+          schema:
+            type: string
+          example: SP-1
+        - name: service_fabric
+          in: path
+          schema:
+            type: string
+          required: true
+        - name: service_node
+          in: path
+          schema:
+            type: string
+          required: true
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/fabrics/{service_fabric}/service-nodes/{service_node}/policies/{fabric}/deployments:
+    post:
+      tags:
+        - Service Operations
+      summary: deploy service policy
+      description: >-
+        Used to deploy the service policy on the source or/and destination
+        network if those networks have been attached.
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"{\n  \"policyNames\": [\n    \"SP-1\",\n    \"SP-2\"\n  ]\n}"'
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: service_fabric
+          in: path
+          schema:
+            type: string
+          required: true
+        - name: service_node
+          in: path
+          schema:
+            type: string
+          required: true
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/control/fabrics/{fabric}:
+    get:
+      tags:
+        - Fabric Operations
+      summary: get single fabric
+      description: Lists the fabric details for the queried fabric.
+      parameters:
+        - name: Accept
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    put:
+      tags:
+        - Fabric Operations
+      summary: modify fabric
+      description: >-
+        Used to modify an existing fabric with the desired nv pairs in the
+        payload.  Can use similar payload to that used for creating a fabric.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example: |
+                {
+                    "fabricId": "FABRIC-4",
+                    "fabricName": "{{fabric}}",
+                    "id": {{fabric_id_number}},
+                    "nvPairs": {
+                        "AAA_REMOTE_IP_ENABLED": false,
+                        "AAA_SERVER_CONF": "",
+                        "ACTIVE_MIGRATION": "false",
+                        "ADVERTISE_PIP_BGP": false,
+                        "AGENT_INTF": "eth0",
+                        "ANYCAST_GW_MAC": "0011.aabb.ccdd",
+                        "ANYCAST_LB_ID": "",
+                        "ANYCAST_RP_IP_RANGE": "10.254.254.0/24",
+                        "ANYCAST_RP_IP_RANGE_INTERNAL": "",
+                        "AUTO_SYMMETRIC_VRF_LITE": false,
+                        "BFD_AUTH_ENABLE": "",
+                        "BFD_AUTH_KEY": "",
+                        "BFD_AUTH_KEY_ID": "",
+                        "BFD_ENABLE": false,
+                        "BFD_IBGP_ENABLE": "",
+                        "BFD_ISIS_ENABLE": "",
+                        "BFD_OSPF_ENABLE": "",
+                        "BFD_PIM_ENABLE": "",
+                        "BGP_AS": "65001",
+                        "BGP_AUTH_ENABLE": false,
+                        "BGP_AUTH_KEY": "",
+                        "BGP_AUTH_KEY_TYPE": "",
+                        "BGP_LB_ID": "0",
+                        "BOOTSTRAP_CONF": "",
+                        "BOOTSTRAP_ENABLE": false,
+                        "BOOTSTRAP_MULTISUBNET": "",
+                        "BOOTSTRAP_MULTISUBNET_INTERNAL": "",
+                        "BRFIELD_DEBUG_FLAG": "Disable",
+                        "BROWNFIELD_NETWORK_NAME_FORMAT": "Auto_Net_VNI$$VNI$$_VLAN$$VLAN_ID$$",
+                        "CDP_ENABLE": false,
+                        "COPP_POLICY": "strict",
+                        "DCI_SUBNET_RANGE": "10.33.0.0/16",
+                        "DCI_SUBNET_TARGET_MASK": "30",
+                        "DEAFULT_QUEUING_POLICY_CLOUDSCALE": "",
+                        "DEAFULT_QUEUING_POLICY_OTHER": "",
+                        "DEAFULT_QUEUING_POLICY_R_SERIES": "",
+                        "DEPLOYMENT_FREEZE": "false",
+                        "DHCP_ENABLE": "",
+                        "DHCP_END": "",
+                        "DHCP_END_INTERNAL": "",
+                        "DHCP_IPV6_ENABLE": "",
+                        "DHCP_IPV6_ENABLE_INTERNAL": "",
+                        "DHCP_START": "",
+                        "DHCP_START_INTERNAL": "",
+                        "DNS_SERVER_IP_LIST": "",
+                        "DNS_SERVER_VRF": "",
+                        "ENABLE_AAA": "",
+                        "ENABLE_AGENT": "false",
+                        "ENABLE_DEFAULT_QUEUING_POLICY": false,
+                        "ENABLE_EVPN": "true",
+                        "ENABLE_FABRIC_VPC_DOMAIN_ID": false,
+                        "ENABLE_FABRIC_VPC_DOMAIN_ID_PREV": "false",
+                        "ENABLE_MACSEC": false,
+                        "ENABLE_NGOAM": true,
+                        "ENABLE_NXAPI": true,
+                        "ENABLE_NXAPI_HTTP": true,
+                        "ENABLE_PBR": false,
+                        "ENABLE_TENANT_DHCP": true,
+                        "ENABLE_TRM": false,
+                        "ENABLE_VPC_PEER_LINK_NATIVE_VLAN": false,
+                        "EXTRA_CONF_INTRA_LINKS": "",
+                        "EXTRA_CONF_LEAF": "",
+                        "EXTRA_CONF_SPINE": "",
+                        "FABRIC_INTERFACE_TYPE": "p2p",
+                        "FABRIC_MTU": "9216",
+                        "FABRIC_MTU_PREV": "9216",
+                        "FABRIC_NAME": "fabric1",
+                        "FABRIC_TYPE": "Switch_Fabric",
+                        "FABRIC_VPC_DOMAIN_ID": "",
+                        "FABRIC_VPC_DOMAIN_ID_PREV": "",
+                        "FABRIC_VPC_QOS": false,
+                        "FABRIC_VPC_QOS_POLICY_NAME": "",
+                        "FEATURE_PTP": false,
+                        "FEATURE_PTP_INTERNAL": "false",
+                        "FF": "Easy_Fabric",
+                        "GRFIELD_DEBUG_FLAG": "Disable",
+                        "HD_TIME": "180",
+                        "IBGP_PEER_TEMPLATE": "",
+                        "IBGP_PEER_TEMPLATE_LEAF": "",
+                        "ISIS_AUTH_ENABLE": "",
+                        "ISIS_AUTH_KEY": "",
+                        "ISIS_AUTH_KEYCHAIN_KEY_ID": "",
+                        "ISIS_AUTH_KEYCHAIN_NAME": "",
+                        "ISIS_LEVEL": "",
+                        "ISIS_P2P_ENABLE": "",
+                        "L2_HOST_INTF_MTU": "9216",
+                        "L2_HOST_INTF_MTU_PREV": "9216",
+                        "L2_SEGMENT_ID_RANGE": "30000-49000",
+                        "L3VNI_MCAST_GROUP": "",
+                        "L3_PARTITION_ID_RANGE": "50000-59000",
+                        "LINK_STATE_ROUTING": "ospf",
+                        "LINK_STATE_ROUTING_TAG": "UNDERLAY",
+                        "LINK_STATE_ROUTING_TAG_PREV": "UNDERLAY",
+                        "LOOPBACK0_IPV6_RANGE": "",
+                        "LOOPBACK0_IP_RANGE": "10.2.0.0/22",
+                        "LOOPBACK1_IPV6_RANGE": "",
+                        "LOOPBACK1_IP_RANGE": "10.3.0.0/22",
+                        "MACSEC_ALGORITHM": "",
+                        "MACSEC_CIPHER_SUITE": "",
+                        "MACSEC_FALLBACK_ALGORITHM": "",
+                        "MACSEC_FALLBACK_KEY_STRING": "",
+                        "MACSEC_KEY_STRING": "",
+                        "MACSEC_REPORT_TIMER": "",
+                        "MGMT_GW": "",
+                        "MGMT_GW_INTERNAL": "",
+                        "MGMT_PREFIX": "",
+                        "MGMT_PREFIX_INTERNAL": "",
+                        "MGMT_V6PREFIX": "",
+                        "MGMT_V6PREFIX_INTERNAL": "",
+                        "MPLS_HANDOFF": true,
+                        "MPLS_LB_ID": "101",
+                        "MPLS_LOOPBACK_IP_RANGE": "10.101.0.0/25",
+                        "MULTICAST_GROUP_SUBNET": "239.1.1.0/25",
+                        "NETWORK_VLAN_RANGE": "2300-2999",
+                        "NTP_SERVER_IP_LIST": "",
+                        "NTP_SERVER_VRF": "",
+                        "NVE_LB_ID": "1",
+                        "OSPF_AREA_ID": "0.0.0.0",
+                        "OSPF_AUTH_ENABLE": false,
+                        "OSPF_AUTH_KEY": "",
+                        "OSPF_AUTH_KEY_ID": "",
+                        "PHANTOM_RP_LB_ID1": "",
+                        "PHANTOM_RP_LB_ID2": "",
+                        "PHANTOM_RP_LB_ID3": "",
+                        "PHANTOM_RP_LB_ID4": "",
+                        "PIM_HELLO_AUTH_ENABLE": false,
+                        "PIM_HELLO_AUTH_KEY": "",
+                        "POWER_REDUNDANCY_MODE": "ps-redundant",
+                        "PTP_DOMAIN_ID": "",
+                        "PTP_LB_ID": "",
+                        "REPLICATION_MODE": "Multicast",
+                        "ROUTER_ID_RANGE": "",
+                        "ROUTE_MAP_SEQUENCE_NUMBER_RANGE": "1-65534",
+                        "RP_COUNT": "2",
+                        "RP_LB_ID": "254",
+                        "RP_MODE": "asm",
+                        "RR_COUNT": "2",
+                        "SERVICE_NETWORK_VLAN_RANGE": "3000-3199",
+                        "SITE_ID": "65001",
+                        "SNMP_SERVER_HOST_TRAP": true,
+                        "SPINE_COUNT": "0",
+                        "SSPINE_ADD_DEL_DEBUG_FLAG": "Disable",
+                        "SSPINE_COUNT": "0",
+                        "STATIC_UNDERLAY_IP_ALLOC": false,
+                        "STRICT_CC_MODE": false,
+                        "SUBINTERFACE_RANGE": "2-511",
+                        "SUBNET_RANGE": "10.4.0.0/16",
+                        "SUBNET_TARGET_MASK": "30",
+                        "SYSLOG_SERVER_IP_LIST": "",
+                        "SYSLOG_SERVER_VRF": "",
+                        "SYSLOG_SEV": "",
+                        "UNDERLAY_IS_V6": false,
+                        "USE_LINK_LOCAL": "",
+                        "V6_SUBNET_RANGE": "",
+                        "V6_SUBNET_TARGET_MASK": "",
+                        "VPC_AUTO_RECOVERY_TIME": "360",
+                        "VPC_DELAY_RESTORE": "150",
+                        "VPC_DELAY_RESTORE_TIME": "60",
+                        "VPC_DOMAIN_ID_RANGE": "1-1000",
+                        "VPC_ENABLE_IPv6_ND_SYNC": true,
+                        "VPC_PEER_KEEP_ALIVE_OPTION": "management",
+                        "VPC_PEER_LINK_PO": "500",
+                        "VPC_PEER_LINK_VLAN": "3600",
+                        "VRF_LITE_AUTOCONFIG": "Back2BackOnly",
+                        "VRF_VLAN_RANGE": "2000-2299",
+                        "abstract_anycast_rp": "anycast_rp",
+                        "abstract_bgp": "base_bgp",
+                        "abstract_bgp_neighbor": "evpn_bgp_rr_neighbor",
+                        "abstract_bgp_rr": "evpn_bgp_rr",
+                        "abstract_dhcp": "base_dhcp",
+                        "abstract_extra_config_bootstrap": "extra_config_bootstrap_11_1",
+                        "abstract_extra_config_leaf": "extra_config_leaf",
+                        "abstract_extra_config_spine": "extra_config_spine",
+                        "abstract_feature_leaf": "base_feature_leaf_upg",
+                        "abstract_feature_spine": "base_feature_spine_upg",
+                        "abstract_isis": "base_isis_level2",
+                        "abstract_isis_interface": "isis_interface",
+                        "abstract_loopback_interface": "int_fabric_loopback_11_1",
+                        "abstract_multicast": "base_multicast_11_1",
+                        "abstract_ospf": "base_ospf",
+                        "abstract_ospf_interface": "ospf_interface_11_1",
+                        "abstract_pim_interface": "pim_interface",
+                        "abstract_route_map": "route_map",
+                        "abstract_routed_host": "int_routed_host_11_1",
+                        "abstract_trunk_host": "int_trunk_host_11_1",
+                        "abstract_vlan_interface": "int_fabric_vlan_11_1",
+                        "abstract_vpc_domain": "base_vpc_domain_11_1",
+                        "default_network": "Default_Network_Universal",
+                        "default_vrf": "Default_VRF_Universal",
+                        "enableRealTimeBackup": false,
+                        "enableScheduledBackup": false,
+                        "network_extension_template": "Default_Network_Extension_Universal",
+                        "scheduledTime": "",
+                        "software_image": "",
+                        "temp_anycast_gateway": "anycast_gateway",
+                        "temp_vpc_domain_mgmt": "vpc_domain_mgmt",
+                        "temp_vpc_peer_link": "int_vpc_peer_link_po_11_1",
+                        "vrf_extension_template": "Default_VRF_Extension_Universal"
+                    },
+                    "templateName": "Easy_Fabric_11_1"
+                }
+      parameters:
+        - name: Accept
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    delete:
+      tags:
+        - Fabric Operations
+      summary: delete fabric
+      description: Removes fabric named in the URI from DCNM
+      parameters:
+        - name: Accept
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/control/fabrics:
+    get:
+      tags:
+        - Fabric Operations
+      summary: get all fabrics
+      description: >-
+        Queries DCNM for all facts and information about all configured fabrics
+        within the inventory
+      parameters:
+        - name: Accept
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    post:
+      tags:
+        - Fabric Operations
+      summary: create fabric
+      description: >-
+        Creates a new fabric with the specific nv pairs defined within the
+        payload.  These values mimic the names/values that would be applied
+        through the DCNM Fabric Builder UI.  To obtain a payload for this
+        deployment, the API-Tool within DCNM can watch the request through the
+        UI and give the applicable call and payload for reuse/modification
+        later.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                fabricName: '{{fabric}}'
+                nvPairs:
+                  AAA_REMOTE_IP_ENABLED: false
+                  AAA_SERVER_CONF: ''
+                  ACTIVE_MIGRATION: 'false'
+                  ADVERTISE_PIP_BGP: false
+                  AGENT_INTF: eth0
+                  ANYCAST_GW_MAC: 2020.0000.00aa
+                  ANYCAST_LB_ID: ''
+                  ANYCAST_RP_IP_RANGE: 10.254.254.0/24
+                  ANYCAST_RP_IP_RANGE_INTERNAL: ''
+                  AUTO_SYMMETRIC_VRF_LITE: ''
+                  BFD_AUTH_ENABLE: ''
+                  BFD_AUTH_KEY: ''
+                  BFD_AUTH_KEY_ID: ''
+                  BFD_ENABLE: false
+                  BFD_IBGP_ENABLE: ''
+                  BFD_ISIS_ENABLE: ''
+                  BFD_OSPF_ENABLE: ''
+                  BFD_PIM_ENABLE: ''
+                  BGP_AS: '65001'
+                  BGP_AUTH_ENABLE: false
+                  BGP_AUTH_KEY: ''
+                  BGP_AUTH_KEY_TYPE: ''
+                  BGP_LB_ID: '0'
+                  BOOTSTRAP_CONF: ''
+                  BOOTSTRAP_ENABLE: false
+                  BOOTSTRAP_MULTISUBNET: ''
+                  BOOTSTRAP_MULTISUBNET_INTERNAL: ''
+                  BRFIELD_DEBUG_FLAG: Disable
+                  BROWNFIELD_NETWORK_NAME_FORMAT: Auto_Net_VNI$$VNI$$_VLAN$$VLAN_ID$$
+                  CDP_ENABLE: false
+                  COPP_POLICY: strict
+                  DCI_SUBNET_RANGE: 10.33.0.0/16
+                  DCI_SUBNET_TARGET_MASK: '30'
+                  DEAFULT_QUEUING_POLICY_CLOUDSCALE: ''
+                  DEAFULT_QUEUING_POLICY_OTHER: ''
+                  DEAFULT_QUEUING_POLICY_R_SERIES: ''
+                  DEPLOYMENT_FREEZE: 'false'
+                  DHCP_ENABLE: ''
+                  DHCP_END: ''
+                  DHCP_END_INTERNAL: ''
+                  DHCP_IPV6_ENABLE: ''
+                  DHCP_IPV6_ENABLE_INTERNAL: ''
+                  DHCP_START: ''
+                  DHCP_START_INTERNAL: ''
+                  DNS_SERVER_IP_LIST: ''
+                  DNS_SERVER_VRF: ''
+                  ENABLE_AAA: ''
+                  ENABLE_AGENT: 'false'
+                  ENABLE_DEFAULT_QUEUING_POLICY: false
+                  ENABLE_EVPN: 'true'
+                  ENABLE_FABRIC_VPC_DOMAIN_ID: false
+                  ENABLE_FABRIC_VPC_DOMAIN_ID_PREV: ''
+                  ENABLE_MACSEC: false
+                  ENABLE_NGOAM: true
+                  ENABLE_NXAPI: true
+                  ENABLE_NXAPI_HTTP: true
+                  ENABLE_PBR: false
+                  ENABLE_TENANT_DHCP: true
+                  ENABLE_TRM: false
+                  ENABLE_VPC_PEER_LINK_NATIVE_VLAN: false
+                  EXTRA_CONF_INTRA_LINKS: ''
+                  EXTRA_CONF_LEAF: ''
+                  EXTRA_CONF_SPINE: ''
+                  FABRIC_INTERFACE_TYPE: p2p
+                  FABRIC_MTU: '9216'
+                  FABRIC_MTU_PREV: '9216'
+                  FABRIC_NAME: fabric1
+                  FABRIC_TYPE: Switch_Fabric
+                  FABRIC_VPC_DOMAIN_ID: ''
+                  FABRIC_VPC_DOMAIN_ID_PREV: ''
+                  FABRIC_VPC_QOS: false
+                  FABRIC_VPC_QOS_POLICY_NAME: ''
+                  FEATURE_PTP: false
+                  FEATURE_PTP_INTERNAL: 'false'
+                  FF: Easy_Fabric
+                  GRFIELD_DEBUG_FLAG: Disable
+                  HD_TIME: '180'
+                  IBGP_PEER_TEMPLATE: ''
+                  IBGP_PEER_TEMPLATE_LEAF: ''
+                  ISIS_AUTH_ENABLE: ''
+                  ISIS_AUTH_KEY: ''
+                  ISIS_AUTH_KEYCHAIN_KEY_ID: ''
+                  ISIS_AUTH_KEYCHAIN_NAME: ''
+                  ISIS_LEVEL: ''
+                  ISIS_P2P_ENABLE: ''
+                  L2_HOST_INTF_MTU: '9216'
+                  L2_HOST_INTF_MTU_PREV: '9216'
+                  L2_SEGMENT_ID_RANGE: 30000-49000
+                  L3VNI_MCAST_GROUP: ''
+                  L3_PARTITION_ID_RANGE: 50000-59000
+                  LINK_STATE_ROUTING: ospf
+                  LINK_STATE_ROUTING_TAG: UNDERLAY
+                  LINK_STATE_ROUTING_TAG_PREV: ''
+                  LOOPBACK0_IPV6_RANGE: ''
+                  LOOPBACK0_IP_RANGE: 10.2.0.0/22
+                  LOOPBACK1_IPV6_RANGE: ''
+                  LOOPBACK1_IP_RANGE: 10.3.0.0/22
+                  MACSEC_ALGORITHM: ''
+                  MACSEC_CIPHER_SUITE: ''
+                  MACSEC_FALLBACK_ALGORITHM: ''
+                  MACSEC_FALLBACK_KEY_STRING: ''
+                  MACSEC_KEY_STRING: ''
+                  MACSEC_REPORT_TIMER: ''
+                  MGMT_GW: ''
+                  MGMT_GW_INTERNAL: ''
+                  MGMT_PREFIX: ''
+                  MGMT_PREFIX_INTERNAL: ''
+                  MGMT_V6PREFIX: ''
+                  MGMT_V6PREFIX_INTERNAL: ''
+                  MPLS_HANDOFF: true
+                  MPLS_LB_ID: '101'
+                  MPLS_LOOPBACK_IP_RANGE: 10.101.0.0/25
+                  MULTICAST_GROUP_SUBNET: 239.1.1.0/25
+                  NETWORK_VLAN_RANGE: 2300-2999
+                  NTP_SERVER_IP_LIST: ''
+                  NTP_SERVER_VRF: ''
+                  NVE_LB_ID: '1'
+                  OSPF_AREA_ID: 0.0.0.0
+                  OSPF_AUTH_ENABLE: false
+                  OSPF_AUTH_KEY: ''
+                  OSPF_AUTH_KEY_ID: ''
+                  PHANTOM_RP_LB_ID1: ''
+                  PHANTOM_RP_LB_ID2: ''
+                  PHANTOM_RP_LB_ID3: ''
+                  PHANTOM_RP_LB_ID4: ''
+                  PIM_HELLO_AUTH_ENABLE: false
+                  PIM_HELLO_AUTH_KEY: ''
+                  POWER_REDUNDANCY_MODE: ps-redundant
+                  PTP_DOMAIN_ID: ''
+                  PTP_LB_ID: ''
+                  REPLICATION_MODE: Multicast
+                  ROUTER_ID_RANGE: ''
+                  ROUTE_MAP_SEQUENCE_NUMBER_RANGE: 1-65534
+                  RP_COUNT: '2'
+                  RP_LB_ID: '254'
+                  RP_MODE: asm
+                  RR_COUNT: '2'
+                  SERVICE_NETWORK_VLAN_RANGE: 3000-3199
+                  SITE_ID: '65001'
+                  SNMP_SERVER_HOST_TRAP: true
+                  SPINE_COUNT: '0'
+                  SSPINE_ADD_DEL_DEBUG_FLAG: Disable
+                  SSPINE_COUNT: '0'
+                  STATIC_UNDERLAY_IP_ALLOC: false
+                  STRICT_CC_MODE: false
+                  SUBINTERFACE_RANGE: 2-511
+                  SUBNET_RANGE: 10.4.0.0/16
+                  SUBNET_TARGET_MASK: '30'
+                  SYSLOG_SERVER_IP_LIST: ''
+                  SYSLOG_SERVER_VRF: ''
+                  SYSLOG_SEV: ''
+                  UNDERLAY_IS_V6: false
+                  USE_LINK_LOCAL: ''
+                  V6_SUBNET_RANGE: ''
+                  V6_SUBNET_TARGET_MASK: ''
+                  VPC_AUTO_RECOVERY_TIME: '360'
+                  VPC_DELAY_RESTORE: '150'
+                  VPC_DELAY_RESTORE_TIME: '60'
+                  VPC_DOMAIN_ID_RANGE: 1-1000
+                  VPC_ENABLE_IPv6_ND_SYNC: true
+                  VPC_PEER_KEEP_ALIVE_OPTION: management
+                  VPC_PEER_LINK_PO: '500'
+                  VPC_PEER_LINK_VLAN: '3600'
+                  VRF_LITE_AUTOCONFIG: Manual
+                  VRF_VLAN_RANGE: 2000-2299
+                  abstract_anycast_rp: anycast_rp
+                  abstract_bgp: base_bgp
+                  abstract_bgp_neighbor: evpn_bgp_rr_neighbor
+                  abstract_bgp_rr: evpn_bgp_rr
+                  abstract_dhcp: base_dhcp
+                  abstract_extra_config_bootstrap: extra_config_bootstrap_11_1
+                  abstract_extra_config_leaf: extra_config_leaf
+                  abstract_extra_config_spine: extra_config_spine
+                  abstract_feature_leaf: base_feature_leaf_upg
+                  abstract_feature_spine: base_feature_spine_upg
+                  abstract_isis: base_isis_level2
+                  abstract_isis_interface: isis_interface
+                  abstract_loopback_interface: int_fabric_loopback_11_1
+                  abstract_multicast: base_multicast_11_1
+                  abstract_ospf: base_ospf
+                  abstract_ospf_interface: ospf_interface_11_1
+                  abstract_pim_interface: pim_interface
+                  abstract_route_map: route_map
+                  abstract_routed_host: int_routed_host_11_1
+                  abstract_trunk_host: int_trunk_host_11_1
+                  abstract_vlan_interface: int_fabric_vlan_11_1
+                  abstract_vpc_domain: base_vpc_domain_11_1
+                  default_network: Default_Network_Universal
+                  default_vrf: Default_VRF_Universal
+                  enableRealTimeBackup: false
+                  enableScheduledBackup: false
+                  network_extension_template: Default_Network_Extension_Universal
+                  scheduledTime: ''
+                  software_image: ''
+                  temp_anycast_gateway: anycast_gateway
+                  temp_vpc_domain_mgmt: vpc_domain_mgmt
+                  temp_vpc_peer_link: int_vpc_peer_link_po_11_1
+                  vrf_extension_template: Default_VRF_Extension_Universal
+                templateName: Easy_Fabric_11_1
+      parameters:
+        - name: Accept
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/control/fabrics/{fabric}/inventory:
+    get:
+      tags:
+        - Fabric Operations
+      summary: get fabric inventory
+      description: >-
+        Gets all information for all devices that are part of the fabric named
+        in the URI, including both DCNM as well as hardware specific facts.
+      parameters:
+        - name: Accept
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/control/fabrics/{fabric_id_number}/inventory/test-reachability:
+    post:
+      tags:
+        - Fabric Operations
+      summary: discover switches
+      description: >-
+        Used to find switches within a given network to be added into DCNM
+        inventory for a specific fabric. Options in payload are similar to
+        Fabric Builder UI, in which a `seed IP`, `number of hops`, and device
+        credentials are given for DCNM to "walk" through.
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: >-
+                "{\n    \"seedIP\": \"10.195.225.159\",\n   
+                \"snmpV3AuthProtocol\": \"0\",\n    \"username\":
+                \"admin\",\n    \"password\": \"ins3965!\",\n    \"maxHops\":
+                0,\n    \"cdpSecondTimeout\": \"5\",\n    \"preserveConfig\":
+                false\n}"
+      parameters:
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: fabric_id_number
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/control/fabrics/{fabric_id_number}/inventory/discover:
+    post:
+      tags:
+        - Fabric Operations
+      summary: register switch
+      description: >-
+        Uses the reachability information as a payload to register switches as
+        members of the fabric named within the URI.  All switches will be added
+        as `leaf` nodes, which may require some reassignment using another API
+        endpoint.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                switches:
+                  - deviceIndex: n9kv-site1-leaf1(9J7ZJ3C08A0)
+                    sysName: n9kv-site1-leaf1
+                    platform: N9K-C9300v
+                    version: 9.3(5)
+                    ipaddr: 10.195.225.155
+                  - deviceIndex: n9kv-site1-leaf2(9M9SRT47R3K)
+                    sysName: n9kv-site1-leaf2
+                    platform: N9K-C9300v
+                    version: 9.3(5)
+                    ipaddr: 10.195.225.156
+                  - deviceIndex: n9kv-site1-leaf3(95V4MNBD0TC)
+                    sysName: n9kv-site1-leaf3
+                    platform: N9K-C9300v
+                    version: 9.3(5)
+                    ipaddr: 10.195.225.157
+                  - deviceIndex: n9kv-site1-spine1(9IVJXBHB65C)
+                    sysName: n9kv-site1-spine1
+                    platform: N9K-C9300v
+                    version: 9.3(5)
+                    ipaddr: 10.195.225.159
+                seedIP: 10.195.225.155
+                snmpV3AuthProtocol: '0'
+                username: admin
+                password: ins3965!
+                maxHops: 0
+                cdpSecondTimeout: '5'
+                preserveConfig: false
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Accept
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: fabric_id_number
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/control/fabrics/{fabric}/switches/9UNCWEXETE8:
+    delete:
+      tags:
+        - Fabric Operations
+      summary: delete switch
+      description: Removes switch (named by serial) in the URI from the fabric
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/config/{fabric}/backup:
+    post:
+      tags:
+        - Fabric Operations
+      summary: fabric backup
+      description: >-
+        Creates a snapshot backup of the fabric named within the URI with a
+        given user-defined tag
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '""'
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: tag
+          in: query
+          schema:
+            type: string
+          example: TestBackup1
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/managed-pool/fabrics/{fabric}/segments/ids:
+    post:
+      tags:
+        - Network Operations
+      summary: get network id
+      requestBody:
+        content: {}
+      parameters:
+        - name: Dcnm-Token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/resource-manager/vlan/{fabric}:
+    get:
+      tags:
+        - VRF Operations
+      summary: get proposed vrf vlan
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: vlanUsageType
+          in: query
+          schema:
+            type: string
+          example: TOP_DOWN_VRF_VLAN
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/top-down/fabrics/{fabric}/networks:
+    post:
+      tags:
+        - Network Operations
+      summary: create network
+      description: >-
+        Creates a new network with the unused VLAN ID in the fabric named within
+        the URI path.  
+
+
+        _Note: `{{ network_id_number }}` is defined as an ENV var, but will need
+        to be changed if more than one network is created on DCNM._
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: >-
+                "{\n   \"fabric\":\"{{fabric}}\",\n   \"vrf\":\"{{vrf}}\",\n  
+                \"networkName\":\"{{network}}\",\n  
+                \"networkId\":\"{{network_id_number}}\",\n  
+                \"networkTemplateConfig\":\"{\\\"gatewayIpAddress\\\":\\\"10.3.4.1/24\\\",
+                \\\"vlanId\\\":\\\"{{network_vlan_id}}\\\"}\",\n  
+                \"networkTemplate\":\"Default_Network_Universal\",\n  
+                \"networkExtensionTemplate\":\"Default_Network_Extension_Universal\"\n}"
+      parameters:
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/top-down/fabrics/{fabric}/networks/attachments:
+    post:
+      tags:
+        - Network Operations
+      summary: attach network to switches
+      description: >-
+        Attaches the created network to the leaf switches defined within the
+        payload of the request.  
+
+
+        _Please ensure proper serial numbers and "edge-facing" ports are
+        referenced in the payload_
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: >-
+                "[\n    {\n        \"networkName\": \"{{network}}\",\n       
+                \"lanAttachList\": [\n            {\n                \"fabric\":
+                \"{{fabric}}\",\n                \"networkName\":
+                \"{{network}}\",\n                \"serialNumber\":
+                \"9FZQF5326F2\",\n                \"vlan\":
+                \"{{network_vlan_id}}\",\n                \"dot1QVlan\":
+                1,\n                \"untagged\": false,\n               
+                \"freeformConfig\": \"\",\n                \"deployment\":
+                true\n            }\n        ]\n    }\n]"
+      parameters:
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    get:
+      tags:
+        - Network Operations
+      summary: query network attachments
+      description: >-
+        Used to list all the attached switches and ports and deployment status
+        in the given networks, filtered by the network names defined in the URI.
+
+
+        _Must have at least one network defined within the URI, but can be
+        comma-separated list_
+      parameters:
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: network-names
+          in: query
+          schema:
+            type: string
+          example: '{{network}}'
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/top-down/fabrics/{fabric}/networks/{network}/deploy:
+    post:
+      tags:
+        - Network Operations
+      summary: deploy network
+      description: >-
+        Used to deploy the pending config a Network under the selected fabric. 
+        Requires network to be created and attached for successful deployment to
+        fabric
+      requestBody:
+        content: {}
+      parameters:
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+        - name: network
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/top-down/fabrics/{fabric}/networks/:
+    get:
+      tags:
+        - Network Operations
+      summary: get network details
+      description: Used to list all the Networks under the selected fabric
+      parameters:
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/top-down/fabrics/{fabric}/networks/{network}:
+    delete:
+      tags:
+        - Network Operations
+      summary: delete network
+      description: Deletes the network named within the URI path
+      parameters:
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+        - name: network
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/interface/:
+    post:
+      tags:
+        - Interface Operations
+      summary: config ethernet
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: >-
+                "{\n    \"policy\": \"int_trunk_host_11_1\",\n   
+                \"interfaces\": [\n        {\n            \"serialNumber\":
+                \"9FZQF5326F2\",\n            \"interfaceType\":
+                \"INTERFACE_ETHERNET\",\n            \"ifName\":
+                \"Ethernet1/22\",\n            \"fabricName\":
+                \"{{fabric}}\",\n            \"nvPairs\": {\n               
+                \"BPDUGUARD_ENABLED\": \"no\",\n               
+                \"PORTTYPE_FAST_ENABLED\": true,\n                \"MTU\":
+                \"jumbo\",\n                \"SPEED\":
+                \"Auto\",\n                \"ALLOWED_VLANS\":
+                \"none\",\n                \"DESC\": \"\",\n               
+                \"CONF\": \" ttag\\n ttag-strip\\n description
+                test\",\n                \"ADMIN_STATE\": true,\n               
+                \"INTF_NAME\": \"Ethernet1/22\"\n            }\n        }\n   
+                ]\n}"
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/interface:
+    post:
+      tags:
+        - Interface Operations
+      summary: create routed subif
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: >-
+                "{\n    \"policy\": \"int_subif_11_1\",\n    \"interfaceType\":
+                \"SUBINTERFACE\",\n    \"interfaces\": [\n        {\n           
+                \"serialNumber\": \"FDO221516D9\",\n           
+                \"interfaceType\": \"SUBINTERFACE\",\n            \"ifName\":
+                \"Ethernet1/16.2\",\n            \"fabricName\":
+                \"{{fabric}}\",\n            \"nvPairs\": {\n               
+                \"VLAN\": \"2\",\n                \"INTF_VRF\":
+                \"{{vrf}}\",\n                \"IP\":
+                \"10.10.10.1\",\n                \"PREFIX\":
+                \"24\",\n                \"IPv6\": \"\",\n               
+                \"IPv6_PREFIX\": \"\",\n                \"MTU\":
+                \"9216\",\n                \"DESC\": \"\",\n               
+                \"CONF\": \"\",\n                \"ADMIN_STATE\":
+                true,\n                \"INTF_NAME\":
+                \"Ethernet1/16.2\"\n            }\n        }\n    ],\n   
+                \"skipResourceCheck\": false\n}"
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    get:
+      tags:
+        - Interface Operations
+      summary: query inteface
+      description: >-
+        Returns the Policy attached with each interface and corresponding config
+        parameters(`nv_pairs`)
+      parameters:
+        - name: Dcnm-Token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: serialNumber
+          in: query
+          schema:
+            type: string
+          example: 98KPNK25LAJ
+        - name: ifName
+          in: query
+          schema:
+            type: string
+          example: Loopback10
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/interface/adminstatus:
+    post:
+      tags:
+        - Interface Operations
+      summary: shutdown interface
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                operation: noshut
+                interfaces:
+                  - serialNumber: 9M9SRT47R3K
+                    ifName: Port-channel501
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/interface/deploy:
+    post:
+      tags:
+        - Interface Operations
+      summary: deploy interface
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: >-
+                "[\n    {\n        \"serialNumber\": \"98KPNK25LAJ\",\n       
+                \"ifName\": \"Loopback10\"\n    }\n]"
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/control/links:
+    get:
+      tags:
+        - Link Operations
+      summary: get all links
+      description: Used to list all of the links within DCNM
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/control/links/LINK-UUID-88310:
+    get:
+      tags:
+        - Link Operations
+      summary: get link info by uuid
+      description: >-
+        Gathers the link details for a given link defined by the UUID within the
+        URI
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/control/links/fabrics/{fabric}:
+    get:
+      tags:
+        - Link Operations
+      summary: get all links in fabric
+      description: >-
+        Gathers detailed information for all links within the fabric named
+        within the URI
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/control/links/LINK-UUID-57500:
+    put:
+      tags:
+        - Link Operations
+      summary: modify link
+      description: >-
+        Modifies the parameters of an existing link through details given within
+        the payload.  Payload can be retrieved from one of the `GET` operations
+        listed within this folder
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                sourceFabric: '{{fabric}}'
+                destinationFabric: '{{fabric}}'
+                sourceDevice: 958WQIC6W4V
+                destinationDevice: 9FX0BBEC4TK
+                sourceSwitchName: spine1
+                destinationSwitchName: leaf1
+                sourceInterface: Ethernet1/1
+                destinationInterface: Ethernet1/10
+                templateName: int_intra_fabric_num_link_11_1
+                nvPairs:
+                  PEER1_IP: 10.4.0.5
+                  PEER2_IP: 10.4.0.6
+                  PEER1_V6IP: ''
+                  PEER2_V6IP: ''
+                  ADMIN_STATE: true
+                  MTU: '9216'
+                  PEER1_BFD_ECHO_DISABLE: false
+                  PEER2_BFD_ECHO_DISABLE: false
+                  ENABLE_MACSEC: false
+                  PEER1_DESC: connected-to-leaf1-Ethernet1/10
+                  PEER2_DESC: connected-to-spine1-Ethernet1/1
+                  PEER1_CONF: ''
+                  PEER2_CONF: ''
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    delete:
+      tags:
+        - Link Operations
+      summary: delete link
+      description: Deletes the link named by the UUID given in the URI
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/managed-pool/fabrics/{fabric}/partitions/ids:
+    post:
+      tags:
+        - VRF Operations
+      summary: get vrf segment id
+      description: >-
+        Uses DCNM resource manager to obtain a VRF segment ID value for
+        tracking.  JS tests insert this into the `{{ vrf_id_number }}` ENV var
+      requestBody:
+        content: {}
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/top-down/fabrics/{fabric}/vrfs:
+    post:
+      tags:
+        - VRF Operations
+      summary: create vrf
+      description: Creates a VRF within the fabric defined in the URI.
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: >-
+                "{\n    \"fabric\": \"{{fabric}}\",\n    \"vrfName\":
+                \"{{vrf}}\",\n    \"vrfId\": \"{{vrf_id_number}}\",\n   
+                \"vrfTemplate\": \"Default_VRF_Universal\",\n   
+                \"vrfTemplateConfig\":
+                \"{\\\"vrfVlanName\\\":\\\"\\\",\\\"vrfIntfDescription\\\":\\\"\\\",\\\"vrfDescription\\\":\\\"\\\",\\\"ipv6LinkLocalFlag\\\":true,\\\"mtu\\\":\\\"9216\\\",\\\"tag\\\":\\\"12345\\\",\\\"vrfRouteMap\\\":\\\"FABRIC-RMAP-REDIST-SUBNET\\\",\\\"maxBgpPaths\\\":\\\"1\\\",\\\"maxIbgpPaths\\\":\\\"2\\\",\\\"vrfSegmentId\\\":\\\"{{vrf_id_number}}\\\",\\\"vrfName\\\":\\\"{{vrf}}\\\",\\\"vrfVlanId\\\":\\\"{{vrf_vlan_id}}\\\",\\\"nveId\\\":1,\\\"asn\\\":\\\"null\\\"}\",\n   
+                \"vrfExtensionTemplate\":
+                \"Default_VRF_Extension_Universal\",\n    \"source\": null,\n   
+                \"serviceVrfTemplate\": null\n}"
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    get:
+      tags:
+        - VRF Operations
+      summary: query vrf
+      description: Lists all VRFs in the fabric defined within the URI
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/top-down/fabrics/{fabric}/vrfs/attachments:
+    post:
+      tags:
+        - VRF Operations
+      summary: create multi-site extension attachment
+      description: >-
+        This specific payload creates a multi-site extension VRF switch
+        attachment within DCNM
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: >-
+                "[\n    {\n        \"vrfName\": \"{{vrf}}\",\n       
+                \"lanAttachList\": [\n            {\n                \"fabric\":
+                \"{{fabric}}\",\n                \"vrfName\":
+                \"{{vrf}}\",\n                \"vlan\":
+                \"{{vrf_dot1q_vlan}}\",\n                \"freeformConfig\":
+                \"\",\n                \"serialNumber\":
+                \"9S5NZ70B3JX\",\n                \"deployment\":
+                true,\n                \"extensionValues\":
+                \"\",\n                \"instanceValues\":
+                \"{\\\"loopbackId\\\":\\\"\\\",\\\"loopbackIpAddress\\\":\\\"\\\",\\\"loopbackIpV6Address\\\":\\\"\\\"}\"\n           
+                }\n        ]\n    }\n]"
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    get:
+      tags:
+        - VRF Operations
+      summary: query vrf attachments
+      description: >-
+        Used to list all the attached switches and deployment status in the
+        given VRFs
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: vrf-names
+          in: query
+          schema:
+            type: string
+          example: '{{vrf}}'
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/top-down/fabrics/{fabric}/vrfs/deployments:
+    post:
+      tags:
+        - VRF Operations
+      summary: deploy vrf
+      description: Deploys the previously created VRF to the fabric defined in the URI
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                vrfNames: '{{vrf}}'
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/resource-manager/reserve-id:
+    post:
+      tags:
+        - VRF Operations
+      summary: get vrf lite dot1q id
+      description: >-
+        Uses the DCNM resource manager to gather an unused 802.1q VLAN ID for
+        use in the VRF for peering purposes.  JS test inserts this value after
+        completion into the `{{ vrf_dot1q_vlan }}` ENV var
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                scopeType: DeviceInterface
+                usageType: TOP_DOWN_L3_DOT1Q
+                allocatedTo: '{{vrf}}'
+                serialNumber: 9O10EUPLJZ9
+                ifName: Ethernet1/21
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/top-down/fabrics/{fabric}/vrfs/switches:
+    get:
+      tags:
+        - VRF Operations
+      summary: get switch details by vrf
+      description: >-
+        Used to obtain the switch details per VRF using a comma-separated list
+        of VRF names and switch serial numbers defined within the URI
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: vrf-names
+          in: query
+          schema:
+            type: string
+          example: '{{vrf}}'
+        - name: serial-numbers
+          in: query
+          schema:
+            type: string
+          example: 9GNSW5DCTEZ
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/top-down/fabrics/{fabric}/vrfs/{vrf}:
+    put:
+      tags:
+        - VRF Operations
+      summary: update vrf
+      description: Updates the template configuration applied to a VRF after deployment
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: >-
+                "{\n    \"fabric\": \"{{fabric}}\",\n    \"vrfName\":
+                \"{{vrf}}\",\n    \"vrfTemplate\":
+                \"Default_VRF_Universal\",\n    \"vrfExtensionTemplate\":
+                \"Default_VRF_Extension_Universal\",\n    \"vrfTemplateConfig\":
+                \"{\\\"advertiseDefaultRouteFlag\\\":\\\"false\\\",\\\"vrfVlanId\\\":\\\"\\\",\\\"isRPExternal\\\":\\\"false\\\",\\\"vrfDescription\\\":\\\"\\\",\\\"L3VniMcastGroup\\\":\\\"\\\",\\\"maxBgpPaths\\\":\\\"8\\\",\\\"maxIbgpPaths\\\":\\\"8\\\",\\\"vrfSegmentId\\\":\\\"{{vrf_id_number}}\\\",\\\"ipv6LinkLocalFlag\\\":\\\"true\\\",\\\"vrfRouteMap\\\":\\\"fabric-rmap-redist-subnet\\\",\\\"configureStaticDefaultRouteFlag\\\":\\\"false\\\",\\\"trmBGWMSiteEnabled\\\":\\\"false\\\",\\\"tag\\\":\\\"\\\",\\\"rpAddress\\\":\\\"\\\",\\\"nveId\\\":\\\"1\\\",\\\"SERVICE_CONFIG\\\":\\\"{}\\\",\\\"mtu\\\":\\\"9216\\\",\\\"multicastGroup\\\":\\\"\\\",\\\"advertiseHostRouteFlag\\\":\\\"true\\\",\\\"vrfVlanName\\\":\\\"\\\",\\\"trmEnabled\\\":\\\"false\\\",\\\"loopbackNumber\\\":\\\"\\\",\\\"asn\\\":\\\"65000\\\",\\\"vrfIntfDescription\\\":\\\"\\\",\\\"vrfName\\\":\\\"{{vrf}}\\\"}\",\n   
+                \"vrfId\": {{vrf_id_number}},\n    \"serviceVrfTemplate\":
+                null,\n    \"source\": null\n}"
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+        - name: vrf
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    delete:
+      tags:
+        - VRF Operations
+      summary: delete vrf
+      description: Deletes the defined VRF within the fabric defined inside of the URI
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: fabric
+          in: path
+          schema:
+            type: string
+          required: true
+        - name: vrf
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /fm/fmrest/lanConfig/getLanSwitchCredentials:
+    get:
+      tags:
+        - LAN Credential Management
+      summary: get default lan credentials
+      description: >-
+        Retrieves LAN credentials currently present.  Will not display usernames
+        or passwords in clear text.
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /fm/fmrest/lanConfig/saveDefaultCredentials:
+    post:
+      tags:
+        - LAN Credential Management
+      summary: update default lan credentials
+      description: Sends updated device credentials to DCNM.  Uses defined ENV vars
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              properties:
+                username:
+                  type: string
+                  example: '{{default_lan_username}}'
+                password:
+                  type: string
+                  example: '{{default_lan_password}}'
+      parameters:
+        - name: Dcnm-Token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/x-www-form-urlencoded
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/config/templates/:
+    get:
+      tags:
+        - Template Operations
+      summary: get all templates
+      description: >-
+        Query all configuration templates defined inside of DCNM (includes both
+        system- and user-defined templates)
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/config/templates/telemetry_config:
+    get:
+      tags:
+        - Template Operations
+      summary: get specific template
+      description: >-
+        Gathers the specific configuration template as defined by the name of
+        the template within the URI
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: populate
+          in: query
+          schema:
+            type: boolean
+          example: 'true'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    put:
+      tags:
+        - Template Operations
+      summary: update  template config
+      description: Updates the configuration defined in an existing template within DCNM
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: >-
+                "{\n    \"content\": \"##template properties
+                \\nname=telemetry_config;\\ndescription = ;\\ntags =
+                ;\\nuserDefined = true;\\nsupportedPlatforms =
+                All;\\ntemplateType = POLICY;\\ntemplateSubType =
+                DEVICE;\\ncontentType = TEMPLATE_CLI;\\nimplements =
+                implements;\\ndependencies = ;\\npublished =
+                false;\\n##\\n##template variables\\n
+                @(DisplayName=\\\"Certificate Path\\\", Description=\\\"Location
+                of certificate for telemetry export\\\")\\nstring
+                CRT_PATH;\\n\\n##\\n##template content\\nfeature
+                telemetry\\n\\ntelemetry\\n  certificate $$CRT_PATH$$
+                telegraf\\n  destination-profile\\n    use-vrf management\\n 
+                destination-group 1\\n    ip address 10.195.225.176 port 57000
+                protocol gRPC encoding GPB\\n  sensor-group 1\\n    data-source
+                DME\\n    path sys/ch depth unbounded\\n  sensor-group 2\\n   
+                data-source DME\\n    path sys/intf depth unbounded\\n 
+                sensor-group 3\\n    data-source DME\\n    path sys/bgp depth
+                unbounded\\n  sensor-group 4\\n    data-source DME\\n    path
+                sys/procsys/syscpusummary/syscpuhistory-last60seconds\\n 
+                sensor-group 5\\n    data-source DME\\n    path
+                sys/procsys/sysmem/sysmemusage\\n  sensor-group 6\\n   
+                data-source DME\\n    path sys/bd depth unbounded\\n 
+                sensor-group 7\\n    data-source DME\\n    path sys/mac depth
+                unbounded\\n  sensor-group 8\\n    data-source DME\\n    path
+                sys/evpn depth 4\\n  sensor-group 9\\n    data-source DME\\n   
+                path sys/urib depth unbounded query-condition
+                rsp-foreign-subtree=ephemeral\\n  sensor-group 10\\n   
+                data-source DME\\n    path sys/u6rib depth unbounded
+                query-condition rsp-foreign-subtree=ephemeral\\n  sensor-group
+                11\\n    data-source DME\\n    path
+                sys/bgp/inst/dom-default/af-[l2vpn-evpn] depth unbounded
+                query-condition rsp-foreign-subtree=ephemeral\\n  subscription
+                1\\n    dst-grp 1\\n    snsr-grp 1 sample-interval 10000\\n 
+                subscription 2\\n    dst-grp 1\\n    snsr-grp 2 sample-interval
+                10000\\n  subscription 3\\n    dst-grp 1\\n    snsr-grp 3
+                sample-interval 30000\\n  subscription 4\\n    dst-grp 1\\n   
+                snsr-grp 4 sample-interval 15000\\n  subscription 5\\n   
+                dst-grp 1\\n    snsr-grp 5 sample-interval 15000\\n 
+                subscription 6\\n    dst-grp 1\\n    snsr-grp 6 sample-interval
+                0\\n  subscription 7\\n    dst-grp 1\\n    snsr-grp 7
+                sample-interval 10000\\n  subscription 8\\n    dst-grp 1\\n   
+                snsr-grp 8 sample-interval 15000\\n  subscription 9\\n   
+                dst-grp 1\\n    snsr-grp 9 sample-interval 15000\\n 
+                subscription 10\\n    dst-grp 1\\n    snsr-grp 10
+                sample-interval 15000\\n  subscription 11\\n    dst-grp 1\\n   
+                snsr-grp 11 sample-interval 15000##\"\n}"
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    delete:
+      tags:
+        - Template Operations
+      summary: delete template
+      description: Removes the template defined in the URI from DCNM
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/config/templates/validate:
+    post:
+      tags:
+        - Template Operations
+      summary: validate template data
+      description: >-
+        Validates the structure of a given template configuration against the
+        DCNM syntax and language.  This input is strictly a string in nature
+      requestBody:
+        content:
+          text/plain:
+            schema:
+              type: string
+              example: >-
+                "##template properties \nname=telemetry_config;\ndescription =
+                ;\ntags = ;\nuserDefined = true;\nsupportedPlatforms =
+                All;\ntemplateType = POLICY;\ntemplateSubType =
+                DEVICE;\ncontentType = TEMPLATE_CLI;\nimplements =
+                implements;\ndependencies = ;\npublished =
+                false;\n##\n##template variables\n @(DisplayName=\"Certificate
+                Path\", Description=\"Location of certificate for telemetry
+                export\")\nstring CRT_PATH;\n\n##\n##template
+                content\ntelemetry\n certificate $$CRT_PATH$$ telegraf\n
+                destination-profile\n use-vrf management\n destination-group 1\n
+                ip address 10.195.225.176 port 57000 protocol gRPC encoding
+                GPB\n sensor-group 1\n data-source DME\n path sys/ch depth
+                unbounded\n subscription 1\n dst-grp 1\n snsr-grp 1
+                sample-interval 10000\n##"
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/config/templates/template:
+    post:
+      tags:
+        - Template Operations
+      summary: create template config
+      description: >-
+        Creates a configuration template within DCNM using the verified
+        configuration data from the verification step
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: >-
+                "{\n    \"templatename\": \"telemetry_config\",\n   
+                \"content\": \"##template properties
+                \\nname=telemetry_config;\\ndescription = ;\\ntags =
+                ;\\nuserDefined = true;\\nsupportedPlatforms =
+                All;\\ntemplateType = POLICY;\\ntemplateSubType =
+                DEVICE;\\ncontentType = TEMPLATE_CLI;\\nimplements =
+                implements;\\ndependencies = ;\\npublished =
+                false;\\n##\\n##template variables\\n
+                @(DisplayName=\\\"Certificate Path\\\", Description=\\\"Location
+                of certificate for telemetry export\\\")\\nstring
+                CRT_PATH;\\n\\n##\\n##template content\\ntelemetry\\n
+                certificate $$CRT_PATH$$ telegraf\\n destination-profile\\n
+                use-vrf management\\n destination-group 1\\n ip address
+                10.195.225.176 port 57000 protocol gRPC encoding GPB\\n
+                sensor-group 1\\n data-source DME\\n path sys/ch depth
+                unbounded\\n subscription 1\\n dst-grp 1\\n snsr-grp 1
+                sample-interval 10000\\n##\"\n}"
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/config/templates/telemetry_config/populate:
+    post:
+      tags:
+        - Template Operations
+      summary: template variable population
+      description: >-
+        Creates the configuration output from a template given the inputs
+        defined within the payload of this request and the name of the template
+        defined in the URI
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"{\n    \"CRT_PATH\": \"/bootflash/telegraf.crt\"\n}"'
+      parameters:
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/control/policies/switches:
+    get:
+      tags:
+        - Policy Operations
+      summary: get policies
+      description: >-
+        List the applied policies to a switch based on the comma-separated list
+        of serial numbers defined within the URI
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: serialNumber
+          in: query
+          schema:
+            type: string
+          example: 9BF0U5TA3GI
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/control/policies:
+    post:
+      tags:
+        - Policy Operations
+      summary: create policy
+      description: >-
+        Creates a specific application of a policy against the switch defined by
+        the serial number in the payload
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: >-
+                "{\n    \"source\": \"\",\n    \"serialNumber\":
+                \"9BF0U5TA3GI\",\n    \"entityType\": \"SWITCH\",\n   
+                \"entityName\": \"SWITCH\",\n    \"templateName\":
+                \"telemetry_config\",\n    \"priority\": \"500\",\n   
+                \"description\": \"created from Postman\",\n    \"nvPairs\":
+                {\n      \"CRT_PATH\": \"/bootflash/telegraf.crt\"\n     
+                }\n}\n"
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/control/policies/deploy:
+    post:
+      tags:
+        - Policy Operations
+      summary: deploy policy
+      description: Deploys the created policy-switch assignment to the devices
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"[\n    \"POLICY-88640\"\n]"'
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/control/policies/{policy_id_number}:
+    delete:
+      tags:
+        - Policy Operations
+      summary: delete policy
+      description: >-
+        Deletes a given policy as defined by the policyID value defined within
+        the URI
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: policy_id_number
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/poap/servers/uploaded-images-table:
+    get:
+      tags:
+        - Image/Package Management
+      summary: get all uploaded images
+      description: Retrieves a table of all uploaded NXOS images within DCNM
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/packagemgnt/packages:
+    get:
+      tags:
+        - Image/Package Management
+      summary: get all active and inactive packages
+      description: Lists all active and inactive RPMs/SMUs within DCNM
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/packagemgnt/uploaded-packages:
+    get:
+      tags:
+        - Image/Package Management
+      summary: get available uploaded packages
+      description: Lists all active and inactive RPMs/SMUs within DCNM
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/poap/servers/SmartImageUpload:
+    post:
+      tags:
+        - Image/Package Management
+      summary: image upload
+      description: Uploads an image to DCNM
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                imageFileName:
+                  type: string
+                  format: binary
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/octet-stream
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/imagemanagement/job:
+    post:
+      tags:
+        - Image/Package Management
+      summary: upgrade nxos
+      description: >-
+        Uses same endpoint as compatibility check, but with unique payload for
+        image upgrade.  
+
+        Full payload example:
+
+        ```
+
+        Example Body:
+        {"id":"1","eraseStartUp":false,"saverunningConfig":true,"archiveFailureLog":true,"concurrentExec":true,"executeImmediately":false,
+        "comments":"","jobOwner":"admin","jobType":0,"strScheduledTime":"Apr/26/2019,11:30:00","strJobCreationTime":"Apr/26/2019,11:30:00",
+        "maintenanceMode":false,"skipDisruptiveUpgrade":false,"taskList":[{"kickStartImage":"/NotApplicable","systemImageFile":"/var/lib/dcnm/images/nxos.9.2.3.bin",
+        "ssiImageFile":"/NotApplicable","installLog":"","taskAction":"Completed","statusDescr":"","compatibilty_desc":"Disruptiveupgrade",
+        "path":null,"strStatus":"NA","strCompStatus":"SUCCESS","vrfSelected":"management","actionType":0,"sequence":1,"jobId":1,"bdualSup":false,
+        "strScheduledTime":null,"strCompletedTime":null,"bMaintenanceMode":false,"parallelLineCardUpgrade":false,"noReload":false,"nonDisruptive":false,
+        "nonInterruptive":true,"biosForce":false,"id":2,"hostName":"spine-1","ipAddress":"10.195.198.244","platform":"N9K","version":"7.0(3)I7(6)",
+        "serverName":"Default_SCP_Repository","maintenanceDesc":null,"type":"SERVER","status":"NA","compatibilty_status":"SUCCESS"}]} 
+
+        ```
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example: |-
+                {
+                    "archiveFailureLog": true,
+                    "concurrentExec": false,
+                    "eraseStartUp": false,
+                    "executeImmediately": true,
+                    "id": {{job_id}},
+                    "jobOwner": "admin",
+                    "jobType": 0,
+                    "maintenanceMode": false,
+                    "saverunningConfig": true,
+                    "skipDisruptiveUpgrade": false,
+                    "strJobCreationTime": "Jul/23/2020, 16:10:43",
+                    "strScheduledTime": "Jul/24/2020, 16:10:00",
+                    "taskList": [
+                        {
+                            "compatibilty_status": "SKIPPED",
+                            "hostName": "93240-FX2-1",
+                            "id": 97,
+                            "ipAddress": "172.25.74.70",
+                            "kickStartImage": "/Not Applicable",
+                            "parallelLineCardUpgrade": false,
+                            "platform": "N9K",
+                            "serverName": "Default_SCP_Repository",
+                            "ssiImageFile": "/Not Applicable",
+                            "systemImageFile": "/var/lib/dcnm//upload//N9K/nxos.9.3.5.bin",
+                            "type": "SERVER",
+                            "version": "9.3(4)",
+                            "vrfSelected": "management"
+                        },
+                        {
+                            "compatibilty_status": "SKIPPED",
+                            "hostName": "93240-FX2-2",
+                            "id": 98,
+                            "ipAddress": "172.25.74.61",
+                            "kickStartImage": "/Not Applicable",
+                            "parallelLineCardUpgrade": false,
+                            "platform": "N9K",
+                            "serverName": null,
+                            "ssiImageFile": "/Not Applicable",
+                            "systemImageFile": "bootflash:/nxos.9.3.5.bin",
+                            "type": "DEVICE",
+                            "version": "9.3(4)",
+                            "vrfSelected": "management"
+                        }
+                    ]
+                }
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/packagemgnt/activate:
+    post:
+      tags:
+        - Image/Package Management
+      summary: uninstall package
+      description: Uninstalls package from device
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: >-
+                "{\n  \"packageMgrTask\": [\n    {\n      \"switchSerial\":
+                \"string\",\n      \"packageName\": \"packagename.rpm\",\n     
+                \"type\": \"SERVER\",\n      \"jobType\": \"UNINSTALL\",\n     
+                \"serverName\": \"Default_SCP_Repository\",\n     
+                \"vrfSelected\": \"management\"\n    }\n  ]\n}"
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/imagemanagement/job/{job_id}:
+    get:
+      tags:
+        - Image/Package Management
+      summary: get job details
+      description: Retrieves the status of an image compatibility or upgrade job
+      parameters:
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: job_id
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/poap/servers/smart-image:
+    delete:
+      tags:
+        - Image/Package Management
+      summary: delete image
+      description: Removes image from DCNM image store
+      parameters:
+        - name: dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/control/switches/roles:
+    get:
+      tags:
+        - Switch Operations
+      summary: list switch roles
+      description: >-
+        Lists the roles currently applied to all switches.  Can optionally use a
+        query-filter with a comma-separated list of serial numbers to extract
+        the information for only the desired switches
+      parameters:
+        - name: Dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    post:
+      tags:
+        - Switch Operations
+      summary: set switch role
+      description: >-
+        Used to set the desired device's role within the fabric.  Can be one or
+        more devices defined within the array.  
+
+
+        _Please ensure correct serial numbers are used within the array_
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: >-
+                "[\n    {\n        \"serialNumber\": \"9FXMD0HF6F3\",\n       
+                \"role\": \"leaf\"\n    }\n]"
+      parameters:
+        - name: Dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/control/switches/95ZCG398F5C/fabric-name:
+    get:
+      tags:
+        - Switch Operations
+      summary: get fabric by serial
+      description: >-
+        Gather the fabric membership of a single switch based on the serial
+        number defined within the URI
+      parameters:
+        - name: Dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/control/switches/95ZCG398F5C/myip:
+    get:
+      tags:
+        - Switch Operations
+      summary: get ip by serial
+      description: >-
+        Gather the address of a switch (as used for management within DCNM)
+        based on the serial number defined within the URI
+      parameters:
+        - name: Dcnm-token
+          in: header
+          schema:
+            type: string
+          example: '{{token}}'
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /rest/logon:
+    post:
+      tags:
+        - default
+      summary: dcnm login - gather token
+      description: >-
+        Used to gather the DCNM token for API operations.  Authenticates using
+        encoding of the username and password defined within the ENV.  The
+        returned key is added to an ENV var for use by every other DCNM API call
+        using a JS test.  Timeout value is excessively long for testing purposes
+        and is defined in milliseconds
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"{\n    \"expirationTime\": 90000000\n}"'
+      security:
+        - basicAuth: []
+      parameters:
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
